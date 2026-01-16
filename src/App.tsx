@@ -226,6 +226,8 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isProcessin
 
 // 精算用のモーダル
 const SettlementModal = ({ isOpen, event, settlementData, onConfirm, onCancel, isProcessing }: any) => {
+    const [settlementMode, setSettlementMode] = useState<'distribute' | 'carryover'>('distribute');
+
     if (!isOpen) return null;
     const { totalIncome, totalExpense, surplus, perPersonSurplus, list } = settlementData;
 
@@ -238,45 +240,94 @@ const SettlementModal = ({ isOpen, event, settlementData, onConfirm, onCancel, i
                 </div>
                 
                 <div className="p-5 overflow-y-auto">
-                    <div className="bg-gray-50 p-4 rounded-xl mb-6 space-y-2">
+                    <div className="bg-gray-50 p-4 rounded-xl mb-4 space-y-2">
                         <div className="flex justify-between text-sm"><span className="text-gray-500">集まった会費</span> <span className="font-bold">¥{totalIncome.toLocaleString()}</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-500">かかった経費</span> <span className="font-bold text-red-500">-¥{totalExpense.toLocaleString()}</span></div>
                         <div className="border-t border-gray-200 my-2 pt-2 flex justify-between font-bold">
-                            <span>余剰金 (残高)</span> <span className={surplus >= 0 ? "text-green-600" : "text-red-500"}>¥{surplus.toLocaleString()}</span>
+                            <span>{surplus >= 0 ? '余剰金 (黒字)' : '不足金 (赤字)'}</span> <span className={surplus >= 0 ? "text-green-600" : "text-red-500"}>¥{surplus.toLocaleString()}</span>
                         </div>
-                        <div className="text-xs text-right text-gray-400">
-                             1人あたり {perPersonSurplus >= 0 ? '返金' : '追加徴収'}: <span className="font-bold">¥{Math.abs(perPersonSurplus).toLocaleString()}</span>
+                    </div>
+
+                    {/* 余剰金・不足金の扱い選択エリア */}
+                    <div className="mb-6">
+                        <p className="text-xs font-bold text-gray-500 mb-2">
+                            {surplus >= 0 ? '余剰金の扱い' : '不足分の扱い'}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button 
+                                onClick={() => setSettlementMode('distribute')}
+                                className={`p-3 rounded-lg border text-xs font-bold transition-all ${settlementMode === 'distribute' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                {surplus >= 0 ? (
+                                    <>全員に分配<br/>(キャッシュバック)</>
+                                ) : (
+                                    <>全員から徴収<br/>(追加支払い)</>
+                                )}
+                            </button>
+                            <button 
+                                onClick={() => setSettlementMode('carryover')}
+                                className={`p-3 rounded-lg border text-xs font-bold transition-all ${settlementMode === 'carryover' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                {surplus >= 0 ? (
+                                    <>サークル費に繰越<br/>(貯金する)</>
+                                ) : (
+                                    <>サークル費から補填<br/>(残高から引く)</>
+                                )}
+                            </button>
                         </div>
+                        <p className="text-[10px] text-gray-400 mt-2 text-right">
+                            {settlementMode === 'distribute' ? (
+                                surplus >= 0 
+                                    ? `1人あたり ¥${perPersonSurplus.toLocaleString()} 返金されます`
+                                    : `1人あたり ¥${Math.abs(perPersonSurplus).toLocaleString()} 追加で集めます`
+                            ) : (
+                                surplus >= 0
+                                    ? `サークル残高に ¥${surplus.toLocaleString()} 追加されます`
+                                    : `サークル残高から ¥${Math.abs(surplus).toLocaleString()} 支払われます`
+                            )}
+                        </p>
                     </div>
 
                     <h4 className="text-sm font-bold text-gray-700 mb-3 ml-1">精算リスト（誰にいくら渡すか）</h4>
                     <div className="space-y-2 mb-4">
-                        {list.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg bg-white shadow-sm">
-                                <div>
-                                    <div className="font-bold text-gray-800 text-sm">{item.name}</div>
-                                    <div className="text-[10px] text-gray-400">
-                                        立替返金: ¥{item.reimbursement.toLocaleString()} / 分配: ¥{item.distribution.toLocaleString()}
+                        {list.map((item: any, idx: number) => {
+                            // モードによって表示額を変える
+                            // distributeモード: 立替返金 + 分配金
+                            // carryoverモード : 立替返金のみ (分配金は0扱い)
+                            const displayDistribution = settlementMode === 'distribute' ? item.distribution : 0;
+                            const displayTotal = item.reimbursement + displayDistribution;
+
+                            return (
+                                <div key={idx} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg bg-white shadow-sm">
+                                    <div>
+                                        <div className="font-bold text-gray-800 text-sm">{item.name}</div>
+                                        <div className="text-[10px] text-gray-400">
+                                            立替返金: ¥{item.reimbursement.toLocaleString()}
+                                            {settlementMode === 'distribute' && item.distribution !== 0 && ` / ${surplus >= 0 ? '分配' : '徴収'}: ¥${item.distribution.toLocaleString()}`}
+                                        </div>
+                                    </div>
+                                    <div className={`text-lg font-bold ${displayTotal >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                                        {displayTotal >= 0 ? '' : '徴収 '}¥{Math.abs(displayTotal).toLocaleString()}
                                     </div>
                                 </div>
-                                <div className={`text-lg font-bold ${item.totalTransfer >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
-                                    {item.totalTransfer >= 0 ? '' : '徴収 '}¥{Math.abs(item.totalTransfer).toLocaleString()}
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     <div className="bg-yellow-50 p-3 rounded-lg text-xs text-yellow-800 mb-4 flex gap-2">
                         <Info size={16} className="flex-shrink-0"/>
                         <span>
-                            「確定して終了」を押すと、イベントが終了状態になり、精算記録が残ります。現金の受け渡しはこのリストに従って行ってください。
+                            「確定して終了」を押すとイベントが終了します。
+                            {settlementMode === 'distribute' 
+                                ? (surplus >= 0 ? '残高は分配されるため、サークル費には追加されません。' : '不足分は参加者が負担するため、サークル費からは引かれません。')
+                                : (surplus >= 0 ? '残高はサークル費（一般会計）に追加されます。' : '不足分はサークル費（一般会計）から支払われます。')}
                         </span>
                     </div>
                 </div>
 
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
                     <button onClick={onCancel} disabled={isProcessing} className="flex-1 py-3 bg-white text-gray-600 border border-gray-200 rounded-xl font-bold hover:bg-gray-100 active:scale-95 transition-transform">閉じる</button>
-                    <button onClick={onConfirm} disabled={isProcessing} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                    <button onClick={() => onConfirm(settlementMode)} disabled={isProcessing} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
                         {isProcessing ? <Loader2 className="animate-spin h-5 w-5"/> : '確定して終了'}
                     </button>
                 </div>
@@ -625,31 +676,15 @@ export default function App() {
         return () => { unsubCircle(); unsubMembers(); unsubEvents(); };
     }, [user, circleId]);
 
-    // Event Detail Listener OR General Trans Listener for Dashboard
+    // Event Detail Listener
     useEffect(() => {
-        if (!user || !circleId) return;
-
-        // currentEventIdがある場合はそのイベント、ない場合は 'general' (ダッシュボード用) を購読
-        const targetId = currentEventId || 'general';
-
-        const unsubTrans = onSnapshot(query(getCol(PATHS.transactions(circleId, targetId)), orderBy('timestamp', 'desc')), (snap) => {
-            // ダッシュボード用に取得した場合は、eventIdプロパティを付与しておくとfilterリングしやすいが、
-            // 現状のダッシュボードロジックは transactions.filter(t => t.eventId === 'general') となっている。
-            // Firestoreのデータには eventId フィールドはおそらく含まれていない（親ドキュメントがイベント）。
-            // クライアント側で付与してあげるのが良い。
-            setTransactions(snap.docs.map(d => ({ id: d.id, eventId: targetId, ...d.data() })));
+        if (!user || !circleId || !currentEventId) return;
+        const unsubTrans = onSnapshot(query(getCol(PATHS.transactions(circleId, currentEventId)), orderBy('timestamp', 'desc')), (snap) => {
+            setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-
-        // 参加者リストはイベント詳細のときだけ必要
-        let unsubPart = () => {};
-        if (currentEventId) {
-             unsubPart = onSnapshot(getCol(PATHS.participants(circleId, currentEventId)), (snap) => {
-                setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            });
-        } else {
-            setParticipants([]);
-        }
-
+        const unsubPart = onSnapshot(getCol(PATHS.participants(circleId, currentEventId)), (snap) => {
+            setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
         return () => { unsubTrans(); unsubPart(); };
     }, [user, circleId, currentEventId]);
 
@@ -661,10 +696,8 @@ export default function App() {
             const unpaidList: any[] = [];
             const unreimbursedList: any[] = [];
             const reimbursementMap: {[key: string]: any} = {};
-
             const activeEvents = events.filter(e => e.status === 'active' && e.id !== 'general');
             
-            // 全アクティブイベントのトランザクションと参加者を取得
             for (const ev of activeEvents) {
                 const [transSnap, partSnap] = await Promise.all([
                     getDocs(getCol(PATHS.transactions(circleId, ev.id))),
@@ -673,18 +706,13 @@ export default function App() {
                 const evTrans = transSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const evParts = partSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-                // 1. 未払いチェック (メンバー + ゲスト)
                 const checkUnpaid = (uid: string, name: string, isGuest: boolean) => {
                     const hasPaid = evTrans.some((t: any) => t.type === 'collection' && t.userId === uid);
-                    if (!hasPaid) {
-                        unpaidList.push({ uid, name, event: ev, isGuest });
-                    }
+                    if (!hasPaid) unpaidList.push({ uid, name, event: ev, isGuest });
                 };
-
                 members.forEach((m: any) => checkUnpaid(m.uid, m.displayName, false));
                 evParts.forEach((p: any) => checkUnpaid(p.id, p.displayName, true));
 
-                // 2. 未精算チェック
                 evTrans.filter((t: any) => t.type === 'expense' && !t.summary.isReimbursed).forEach((t: any) => {
                     const key = `${ev.id}_${t.userId}`;
                     if (!reimbursementMap[key]) {
@@ -708,7 +736,6 @@ export default function App() {
         }
     };
 
-    // ★追加: 会計画面が開かれたときにデータをロード
     useEffect(() => {
         if (viewMode === 'accounting' && circleId) {
             fetchAccountingData();
@@ -727,8 +754,25 @@ export default function App() {
                 showToast("ログインしました", "success");
             }
         } catch (error: any) {
-             // エラーハンドリング省略（元のコードと同様）
-             showToast("エラー: " + error.message, "error");
+            if (error.code === 'auth/credential-already-in-use') {
+                if (window.confirm("このGoogleアカウントは既に別のユーザーで使用されています。アカウントを切り替えますか？\n(現在の未連携データは失われる可能性があります)")) {
+                    try {
+                        // 既存のcredentialでサインインし直す
+                        if (error.credential) {
+                             await signInWithCredential(auth, error.credential);
+                             showToast("アカウントを切り替えました", "success");
+                        } else {
+                             // credentialがない場合は再度ポップアップでサインイン（このときはlinkではなくsignIn）
+                             await signInWithPopup(auth, provider);
+                             showToast("アカウントを切り替えました", "success");
+                        }
+                    } catch (signInError: any) {
+                        showToast("ログインエラー: " + signInError.message, "error");
+                    }
+                }
+            } else {
+                showToast("エラー: " + error.message, "error");
+            }
         }
     };
 
@@ -759,8 +803,6 @@ export default function App() {
             const circleRef = getDocRef(PATHS.circle(id));
             let snap = await getDoc(circleRef);
             
-            // 匿名ログインリトライロジック省略
-
             if (!snap.exists()) throw new Error("サークルが見つかりません");
             const circleData = snap.data();
             saveCircleHistory(id, circleData?.name || "サークル");
@@ -1017,27 +1059,52 @@ export default function App() {
         });
         setShowSettlementModal(true);
     };
-
-    const confirmSettlement = async () => {
+    
+    // ★修正: 精算確定処理 (分岐ロジック追加)
+    const confirmSettlement = async (mode: 'distribute' | 'carryover') => {
         if (!user || !currentEventId || !settlementData) return;
         setIsProcessingAction(true);
         try {
             const batch = writeBatch(db);
             const eventRef = getDocRef(PATHS.event(circleId!, currentEventId));
-            batch.update(eventRef, { status: 'closed', settledAmount: settlementData.surplus, closedAt: serverTimestamp() });
+            
+            // 1. イベントをクローズ (残高情報も記録)
+            batch.update(eventRef, { 
+                status: 'closed', 
+                settledAmount: settlementData.surplus, 
+                settlementMode: mode, // モードも記録
+                closedAt: serverTimestamp() 
+            });
+
+            // 2. 未精算の立替を全て精算済みにする
             transactions.filter(t => t.type === 'expense' && !t.summary.isReimbursed).forEach(t => {
                 const ref = getDocRef(PATHS.transaction(circleId!, currentEventId, t.id));
                 batch.update(ref, { "summary.isReimbursed": true });
             });
-            const generalTransRef = doc(getCol(PATHS.transactions(circleId!, 'general')));
-            batch.set(generalTransRef, {
-                userId: user.uid, userName: "システム", type: settlementData.surplus >= 0 ? 'general_income' : 'general_expense',
-                description: `イベント「${events.find(e => e.id === currentEventId)?.title}」の精算`, timestamp: serverTimestamp(),
-                summary: { totalAmount: Math.abs(settlementData.surplus), primaryCategory: 'other', hasReceipt: false, isReimbursed: false }
-            });
+            
+            // 3. 一般会計への反映 (繰越モードの場合のみ)
+            if (mode === 'carryover') {
+                const generalTransRef = doc(getCol(PATHS.transactions(circleId!, 'general')));
+                batch.set(generalTransRef, {
+                    userId: user.uid, 
+                    userName: "システム", 
+                    type: settlementData.surplus >= 0 ? 'general_income' : 'general_expense',
+                    description: `イベント「${events.find(e => e.id === currentEventId)?.title}」の繰越金`, 
+                    timestamp: serverTimestamp(),
+                    summary: { 
+                        totalAmount: Math.abs(settlementData.surplus), 
+                        primaryCategory: 'other', 
+                        hasReceipt: false, 
+                        isReimbursed: false 
+                    }
+                });
+            } else {
+                // 分配モードの場合は、一般会計には記録しない（または0円記録とするなど運用によるが、今回は記録なし）
+            }
+            
             await batch.commit();
             setShowSettlementModal(false);
-            showToast("会計を終了しました", 'success');
+            showToast(mode === 'distribute' ? "精算を完了しました (分配)" : "精算を完了しました (繰越)", 'success');
         } catch (e: any) {
             showToast("エラー: " + e.message, 'error');
         } finally {
@@ -1266,7 +1333,9 @@ export default function App() {
                                     <h2 className="text-lg font-bold mb-4">{transactionModalMode === 'admin_direct' ? '管理者の支出' : '立て替えを追加'}</h2>
                                     <form onSubmit={addTransaction} className="space-y-4">
                                         {transactionModalMode === 'regular' && (
-                                             <input type="hidden" name="type" value="expense" />
+                                             <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                                                 <label className="flex-1 cursor-pointer"><input type="radio" name="type" value="expense" defaultChecked className="peer sr-only"/><div className="text-center py-2 text-sm font-bold text-gray-500 peer-checked:bg-white peer-checked:text-red-600 peer-checked:shadow-sm rounded">立替払い</div></label>
+                                             </div>
                                         )}
                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">金額</label><input name="amount" type="number" className="w-full border rounded-xl p-3 text-lg font-bold" required /></div>
                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">内容</label><input name="description" className="w-full border rounded-xl p-3" required /></div>
@@ -1378,13 +1447,14 @@ export default function App() {
                                                             <span className="font-bold text-red-500">¥{item.event.feePerPerson.toLocaleString()}</span
 >                                                            {myRole === 'admin' && (
                                                                 <button onClick={() => {
+                                                                    // 簡易的にFirestoreを更新
                                                                     const transRef = getCol(PATHS.transactions(circleId, item.event.id));
                                                                     addDoc(transRef, {
                                                                         userId: item.uid, userName: item.name, type: 'collection', description: '会費', timestamp: serverTimestamp(),
                                                                         summary: { totalAmount: item.event.feePerPerson, primaryCategory: 'other', hasReceipt: false, isReimbursed: false }
                                                                     }).then(() => {
                                                                         showToast("受領済みにしました", 'success');
-                                                                        fetchAccountingData(); 
+                                                                        fetchAccountingData(); // 再取得
                                                                     });
                                                                 }} className="text-[10px] bg-green-100 text-green-600 px-2 py-1 rounded font-bold">受領する</button>
                                                             )}
@@ -1409,6 +1479,7 @@ export default function App() {
                                                             <span className="font-bold text-indigo-600">¥{item.total.toLocaleString()}</span>
                                                             {myRole === 'admin' && (
                                                                 <button onClick={() => {
+                                                                    // 一括精算
                                                                     const batch = writeBatch(db);
                                                                     item.items.forEach((t: any) => {
                                                                         const ref = getDocRef(PATHS.transaction(circleId, item.event.id, t.id));
