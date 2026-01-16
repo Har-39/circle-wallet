@@ -163,7 +163,7 @@ const DebugResetButton = () => {
                 await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'circle_settings', 'info'));
                 alert("サークル設定を削除しました。リロードします。");
                 window.location.reload();
-            } catch (e) {
+            } catch (e: any) { // Fixed: Added ': any' to allow accessing e.message
                 alert("削除に失敗しました: " + e.message);
             }
         }
@@ -919,6 +919,7 @@ export default function App() {
                                 <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-sm p-6">
                                     <h2 className="text-lg font-bold mb-4">{transactionModalMode === 'admin_direct' ? '管理者の支出' : '記録を追加'}</h2>
                                     <form onSubmit={addTransaction} className="space-y-4">
+                                        {/* フォーム内容は省略せず実装 */}
                                         {transactionModalMode === 'regular' && (
                                              <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
                                                  <label className="flex-1 cursor-pointer"><input type="radio" name="type" value="expense" defaultChecked className="peer sr-only"/><div className="text-center py-2 text-sm font-bold text-gray-500 peer-checked:bg-white peer-checked:text-red-600 peer-checked:shadow-sm rounded">立替払い</div></label>
@@ -943,7 +944,6 @@ export default function App() {
             {/* 3. Circle Dashboard & Accounting View */}
             {circleId && !currentEventId && (
                 <div className="min-h-screen bg-slate-50 pb-20">
-                    <DebugResetButton />
                     <header className="bg-white px-6 py-6 shadow-sm sticky top-0 z-10">
                         <div className="flex justify-between items-center mb-4 relative z-20">
                             <div className="flex-1 min-w-0 mr-2">
@@ -965,7 +965,8 @@ export default function App() {
                             <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className={`text-[10px] px-2 py-1 rounded font-bold ${myRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>{myRole === 'admin' ? '管理者' : 'メンバー'}</span>
                                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?circle=${circleId}`); showToast("サークルURLをコピーしました", 'success'); }} className="bg-gray-100 p-2 rounded-full"><Share2 size={16}/></button>
-                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); window.history.pushState({}, '', window.location.pathname); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
+                                {/* Removed pushState call */}
+                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
                             </div>
                         </div>
                     </header>
