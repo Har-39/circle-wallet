@@ -37,7 +37,7 @@ import {
     ChevronDown, ChevronUp, Image as ImageIcon, 
     LogIn, PlusCircle, LogOut, ShieldCheck, UserCircle, 
     History as HistoryIcon, Pencil, X, ExternalLink, Home,
-    ClipboardList, AlertCircle, Trash2, RotateCcw // Added RotateCcw
+    ClipboardList, AlertCircle, Trash2, RotateCcw, Camera, Calculator 
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -93,7 +93,6 @@ const safeFormatDate = (timestamp: any) => {
 };
 
 const HISTORY_KEY = 'cw_circle_history';
-// ローカルストレージに保存
 const saveCircleHistory = (id: string, name: string) => {
     try {
         let current = [];
@@ -102,12 +101,10 @@ const saveCircleHistory = (id: string, name: string) => {
             current = stored ? JSON.parse(stored) : [];
             if (!Array.isArray(current)) current = [];
         } catch { current = []; }
-
         const next = [{ id, name, lastAccess: Date.now() }, ...current.filter((c: any) => c.id !== id)].slice(0, 10);
         localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
     } catch (e) { console.error("History save error", e); }
 };
-// ローカルストレージから取得
 const getCircleHistory = () => {
     try {
         const stored = localStorage.getItem(HISTORY_KEY);
@@ -132,7 +129,6 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
             return (
                 <div className="p-6 bg-red-50 text-red-900 min-h-screen flex flex-col items-center justify-center text-center">
                     <h1 className="text-xl font-bold mb-4">エラーが発生しました</h1>
-                    <p className="mb-2 text-sm">以下の内容を教えてください：</p>
                     <div className="bg-white p-4 rounded border border-red-200 text-left overflow-auto max-w-full text-xs font-mono mb-4 w-full">
                         {this.state.error?.toString()}
                     </div>
@@ -144,7 +140,6 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
     }
 }
 
-// DebugResetButton Definition
 const DebugResetButton = () => {
     const handleLocalReset = async () => {
         if (window.confirm("【デバッグ】ログアウトして初期画面（オンボーディング）に戻りますか？\n※ローカルのログイン情報のみ削除されます")) {
@@ -156,33 +151,23 @@ const DebugResetButton = () => {
             window.location.reload(); 
         }
     };
-
     const handleDbReset = async () => {
-        if (window.confirm("【危険】サークル設定(ID/PASS)を削除しますか？\n\nこれにより新しいサークルを作成できるようになります。\n※イベントデータ自体は残りますが、管理画面からは見えなくなります。")) {
+        if (window.confirm("【危険】サークル設定(ID/PASS)を削除しますか？")) {
             try {
                 await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'circle_settings', 'info'));
                 alert("サークル設定を削除しました。リロードします。");
                 window.location.reload();
-            } catch (e: any) { // Fixed: Added ': any' to allow accessing e.message
+            } catch (e: any) {
                 alert("削除に失敗しました: " + e.message);
             }
         }
     };
-
     return (
         <div className="fixed top-20 right-4 z-[9999] flex flex-col gap-2 items-end">
-            <button 
-                type="button"
-                onClick={handleLocalReset}
-                className="bg-gray-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg opacity-80 hover:opacity-100 transition-opacity flex items-center gap-1"
-            >
+            <button type="button" onClick={handleLocalReset} className="bg-gray-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg opacity-80 hover:opacity-100 transition-opacity flex items-center gap-1">
                 <RotateCcw size={12} /> Local Reset
             </button>
-            <button 
-                type="button"
-                onClick={handleDbReset}
-                className="bg-red-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg opacity-80 hover:opacity-100 transition-opacity flex items-center gap-1"
-            >
+            <button type="button" onClick={handleDbReset} className="bg-red-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg opacity-80 hover:opacity-100 transition-opacity flex items-center gap-1">
                 <Trash2 size={12} /> Delete Circle
             </button>
         </div>
@@ -206,6 +191,67 @@ const LoadingScreen = ({ message = "読み込み中..." }) => (
         <p className="text-gray-500 font-bold">{message}</p>
     </div>
 );
+
+// ★追加: 精算用のモーダル
+const SettlementModal = ({ isOpen, event, settlementData, onConfirm, onCancel, isProcessing }: any) => {
+    if (!isOpen) return null;
+    const { totalIncome, totalExpense, surplus, perPersonSurplus, list } = settlementData;
+
+    return (
+        <div className="fixed inset-0 bg-black/80 z-[6000] flex items-center justify-center p-4 animate-in fade-in duration-200 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-5 bg-indigo-600 text-white">
+                    <h3 className="text-lg font-bold flex items-center gap-2"><Calculator size={20}/> 会計の終了・精算</h3>
+                    <div className="text-xs opacity-80 mt-1">{event.title}</div>
+                </div>
+                
+                <div className="p-5 overflow-y-auto">
+                    <div className="bg-gray-50 p-4 rounded-xl mb-6 space-y-2">
+                        <div className="flex justify-between text-sm"><span className="text-gray-500">集まった会費</span> <span className="font-bold">¥{totalIncome.toLocaleString()}</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-gray-500">かかった経費</span> <span className="font-bold text-red-500">-¥{totalExpense.toLocaleString()}</span></div>
+                        <div className="border-t border-gray-200 my-2 pt-2 flex justify-between font-bold">
+                            <span>余剰金 (残高)</span> <span className={surplus >= 0 ? "text-green-600" : "text-red-500"}>¥{surplus.toLocaleString()}</span>
+                        </div>
+                        <div className="text-xs text-right text-gray-400">
+                             1人あたり {perPersonSurplus >= 0 ? '返金' : '追加徴収'}: <span className="font-bold">¥{Math.abs(perPersonSurplus).toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <h4 className="text-sm font-bold text-gray-700 mb-3 ml-1">精算リスト（誰にいくら渡すか）</h4>
+                    <div className="space-y-2 mb-4">
+                        {list.map((item: any, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center p-3 border border-gray-100 rounded-lg bg-white shadow-sm">
+                                <div>
+                                    <div className="font-bold text-gray-800 text-sm">{item.name}</div>
+                                    <div className="text-[10px] text-gray-400">
+                                        立替返金: ¥{item.reimbursement.toLocaleString()} / 分配: ¥{item.distribution.toLocaleString()}
+                                    </div>
+                                </div>
+                                <div className={`text-lg font-bold ${item.totalTransfer >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                                    {item.totalTransfer >= 0 ? '' : '徴収 '}¥{Math.abs(item.totalTransfer).toLocaleString()}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="bg-yellow-50 p-3 rounded-lg text-xs text-yellow-800 mb-4 flex gap-2">
+                        <Info size={16} className="flex-shrink-0"/>
+                        <span>
+                            「確定して終了」を押すと、イベントが終了状態になり、精算記録が残ります。現金の受け渡しはこのリストに従って行ってください。
+                        </span>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3">
+                    <button onClick={onCancel} disabled={isProcessing} className="flex-1 py-3 bg-white text-gray-600 border border-gray-200 rounded-xl font-bold hover:bg-gray-100 active:scale-95 transition-transform">閉じる</button>
+                    <button onClick={onConfirm} disabled={isProcessing} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg active:scale-95 transition-transform flex justify-center items-center gap-2">
+                        {isProcessing ? <Loader2 className="animate-spin h-5 w-5"/> : '確定して終了'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isProcessing }: any) => {
     if (!isOpen) return null;
@@ -402,17 +448,15 @@ export default function App() {
     const [circleId, setCircleId] = useState<string | null>(null);
     const [currentEventId, setCurrentEventId] = useState<string | null>(null);
     const [myRole, setMyRole] = useState<string | null>(null); 
-    const [viewMode, setViewMode] = useState<'dashboard' | 'accounting'>('dashboard'); // ★View管理
+    const [viewMode, setViewMode] = useState<'dashboard' | 'accounting'>('dashboard'); // View管理
     
     const [circleInfo, setCircleInfo] = useState<any>(null);
     const [events, setEvents] = useState<any[]>([]);
     const [members, setMembers] = useState<any[]>([]);
     
-    // Accounting Data State
     const [accountingData, setAccountingData] = useState<{unpaid: any[], unreimbursed: any[]}>({ unpaid: [], unreimbursed: [] });
     const [isAccountingLoading, setIsAccountingLoading] = useState(false);
 
-    // Event Detail State
     const [transactions, setTransactions] = useState<any[]>([]);
     const [participants, setParticipants] = useState<any[]>([]);
     
@@ -423,6 +467,10 @@ export default function App() {
     const [isEditingName, setIsEditingName] = useState(false);
     const [editingName, setEditingName] = useState('');
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+    
+    // ★追加: 精算モーダル用
+    const [settlementData, setSettlementData] = useState<any>(null);
+    const [showSettlementModal, setShowSettlementModal] = useState(false);
 
     useEffect(() => {
         const ua = navigator.userAgent.toLowerCase();
@@ -452,7 +500,6 @@ export default function App() {
         }
     };
 
-    // Helper to ensure we have a user
     const ensureUser = async () => {
         return new Promise<User>((resolve, reject) => {
             const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -469,7 +516,6 @@ export default function App() {
         });
     };
 
-    // Auth & Init
     useEffect(() => {
         const init = async () => {
             const params = new URLSearchParams(window.location.search);
@@ -489,7 +535,6 @@ export default function App() {
         });
     }, []);
 
-    // Circle Data Listener
     useEffect(() => {
         if (!user || !circleId) {
             if (user && !circleId) setLoading(false);
@@ -521,7 +566,6 @@ export default function App() {
         return () => { unsubCircle(); unsubMembers(); unsubEvents(); };
     }, [user, circleId]);
 
-    // Event Detail Listener
     useEffect(() => {
         if (!user || !circleId || !currentEventId) return;
         const unsubTrans = onSnapshot(query(getCol(PATHS.transactions(circleId, currentEventId)), orderBy('timestamp', 'desc')), (snap) => {
@@ -533,7 +577,6 @@ export default function App() {
         return () => { unsubTrans(); unsubPart(); };
     }, [user, circleId, currentEventId]);
 
-    // ★追加: 会計データの集計関数
     const fetchAccountingData = async () => {
         if (!circleId || events.length === 0) return;
         setIsAccountingLoading(true);
@@ -541,10 +584,8 @@ export default function App() {
             const unpaidList: any[] = [];
             const unreimbursedList: any[] = [];
             const reimbursementMap: {[key: string]: any} = {};
-
             const activeEvents = events.filter(e => e.status === 'active' && e.id !== 'general');
             
-            // 全アクティブイベントのトランザクションと参加者を取得
             for (const ev of activeEvents) {
                 const [transSnap, partSnap] = await Promise.all([
                     getDocs(getCol(PATHS.transactions(circleId, ev.id))),
@@ -553,18 +594,13 @@ export default function App() {
                 const evTrans = transSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const evParts = partSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-                // 1. 未払いチェック (メンバー + ゲスト)
                 const checkUnpaid = (uid: string, name: string, isGuest: boolean) => {
                     const hasPaid = evTrans.some((t: any) => t.type === 'collection' && t.userId === uid);
-                    if (!hasPaid) {
-                        unpaidList.push({ uid, name, event: ev, isGuest });
-                    }
+                    if (!hasPaid) unpaidList.push({ uid, name, event: ev, isGuest });
                 };
-
                 members.forEach((m: any) => checkUnpaid(m.uid, m.displayName, false));
                 evParts.forEach((p: any) => checkUnpaid(p.id, p.displayName, true));
 
-                // 2. 未精算チェック
                 evTrans.filter((t: any) => t.type === 'expense' && !t.summary.isReimbursed).forEach((t: any) => {
                     const key = `${ev.id}_${t.userId}`;
                     if (!reimbursementMap[key]) {
@@ -588,14 +624,12 @@ export default function App() {
         }
     };
 
-    // ★追加: 会計画面が開かれたときにデータをロード
     useEffect(() => {
         if (viewMode === 'accounting' && circleId) {
             fetchAccountingData();
         }
     }, [viewMode, circleId, events]); 
 
-    // Actions
     const handleGoogleLogin = async () => {
         const provider = new GoogleAuthProvider();
         try {
@@ -607,7 +641,6 @@ export default function App() {
                 showToast("ログインしました", "success");
             }
         } catch (error: any) {
-             // エラーハンドリング省略（元のコードと同様）
              showToast("エラー: " + error.message, "error");
         }
     };
@@ -639,8 +672,6 @@ export default function App() {
             const circleRef = getDocRef(PATHS.circle(id));
             let snap = await getDoc(circleRef);
             
-            // 匿名ログインリトライロジック省略
-
             if (!snap.exists()) throw new Error("サークルが見つかりません");
             const circleData = snap.data();
             saveCircleHistory(id, circleData?.name || "サークル");
@@ -748,44 +779,98 @@ export default function App() {
             }
         } catch (e: any) { showToast("エラー: " + e.message, 'error'); }
     };
-    
-    // ★追加: 立て替えの精算完了アクション
-    const markExpenseReimbursed = async (eventId: string, transactionId: string, userName: string) => {
-        if (myRole !== 'admin') return;
-        if (!window.confirm(`${userName}さんへの返金を完了しましたか？`)) return;
-        
-        try {
-            const ref = getDocRef(PATHS.transaction(circleId!, eventId, transactionId));
-            await updateDoc(ref, { "summary.isReimbursed": true });
-            
-            // 画面を更新するために再フェッチ（簡易的）
-            if (viewMode === 'accounting') fetchAccountingData();
-            
-            showToast("返金完了を記録しました", 'success');
-        } catch (e: any) {
-             showToast("エラー: " + e.message, 'error');
-        }
-    };
 
-    const promptSettleEvent = (event: any, balance: number) => {
-         if (!user) return;
-        setConfirmModal({
-            isOpen: true, title: "イベントの終了・反映",
-            message: `イベント「${event.title}」を終了します。\n現在の残高: ${balance}円\nサークル費に反映しますか？`,
-            action: async () => {
-                const batch = writeBatch(db);
-                const eventRef = getDocRef(PATHS.event(circleId!, event.id));
-                batch.update(eventRef, { status: 'closed', settledAmount: balance, closedAt: serverTimestamp() });
-                const generalTransRef = doc(getCol(PATHS.transactions(circleId!, 'general')));
-                batch.set(generalTransRef, {
-                    userId: user.uid, userName: "システム", type: balance >= 0 ? 'general_income' : 'general_expense',
-                    description: `イベント「${event.title}」の精算`, timestamp: serverTimestamp(),
-                    summary: { totalAmount: Math.abs(balance), primaryCategory: 'other', hasReceipt: false, isReimbursed: false }
-                });
-                await batch.commit();
-                showToast("サークル費に反映しました", 'success');
-            }
+    // ★追加: 精算計算と確認モーダル表示
+    const handleSettleEvent = (event: any, balance: number) => {
+        // 全参加者（メンバー+ゲスト）のリストを作成（重複排除）
+        const allParticipantsMap = new Map();
+        members.forEach(m => allParticipantsMap.set(m.uid, m.displayName));
+        participants.forEach(p => allParticipantsMap.set(p.id, p.displayName));
+        
+        // 実際に支払いまたは立替をしたユーザーのみを対象とする場合もあるが、
+        // 「全員で均等」とのことなので、ここでは「参加者全員」を分母にする
+        // ただし、不参加者をどう扱うかは運用による。今回は「支払い済みの人」を分母にするのが安全？
+        // ユーザー要望「余った残高を全員で均等に割った分」→ ここでは「会費を払った人」を対象とする
+        
+        const paidMemberIds = new Set(transactions.filter(t => t.type === 'collection').map(t => t.userId));
+        const participantCount = paidMemberIds.size;
+
+        if (participantCount === 0) {
+            showToast("会費を支払った参加者がいません", 'error');
+            return;
+        }
+
+        const totalIncome = transactions.filter(t => t.type === 'collection' || t.type === 'general_income').reduce((s, t) => s + (t.summary?.totalAmount || 0), 0);
+        const totalExpense = transactions.filter(t => t.type === 'expense' || t.type === 'general_expense' || t.type === 'admin_expense').reduce((s, t) => s + (t.summary?.totalAmount || 0), 0);
+        const surplus = totalIncome - totalExpense; // 残高
+        
+        // 1人あたりの分配額 (切り捨て)
+        const perPersonSurplus = Math.floor(surplus / participantCount);
+
+        // 未精算の立替経費を集計
+        const reimbursementMap: {[uid: string]: number} = {};
+        transactions.filter(t => t.type === 'expense' && !t.summary.isReimbursed).forEach(t => {
+            reimbursementMap[t.userId] = (reimbursementMap[t.userId] || 0) + t.summary.totalAmount;
         });
+
+        // リスト作成
+        const settlementList: any[] = [];
+        paidMemberIds.forEach(uid => {
+            const name = allParticipantsMap.get(uid) || "不明なユーザー";
+            const reimbursement = reimbursementMap[uid] || 0; // 立替返金
+            const distribution = perPersonSurplus; // 分配金（マイナスなら徴収）
+            
+            settlementList.push({
+                uid,
+                name,
+                reimbursement,
+                distribution,
+                totalTransfer: reimbursement + distribution // 最終的に渡す額
+            });
+        });
+
+        setSettlementData({
+            totalIncome,
+            totalExpense,
+            surplus,
+            perPersonSurplus,
+            list: settlementList
+        });
+        setShowSettlementModal(true);
+    };
+    
+    // ★追加: 精算確定処理
+    const confirmSettlement = async () => {
+        if (!user || !currentEventId || !settlementData) return;
+        setIsProcessingAction(true);
+        try {
+            const batch = writeBatch(db);
+            
+            // 1. イベントをクローズ
+            const eventRef = getDocRef(PATHS.event(circleId!, currentEventId));
+            batch.update(eventRef, { 
+                status: 'closed', 
+                settledAmount: settlementData.surplus, 
+                closedAt: serverTimestamp() 
+            });
+
+            // 2. 未精算の立替を全て精算済みにする
+            transactions.filter(t => t.type === 'expense' && !t.summary.isReimbursed).forEach(t => {
+                const ref = getDocRef(PATHS.transaction(circleId!, currentEventId, t.id));
+                batch.update(ref, { "summary.isReimbursed": true });
+            });
+            
+            // 3. (オプション) 精算履歴をサークル費履歴に残すか？
+            // 今回は「一覧が見れる」ことが目的なので、イベント自体をクローズすることで履歴とする。
+            
+            await batch.commit();
+            setShowSettlementModal(false);
+            showToast("会計を終了しました", 'success');
+        } catch (e: any) {
+            showToast("エラー: " + e.message, 'error');
+        } finally {
+            setIsProcessingAction(false);
+        }
     };
 
     const calculateCurrentEventStats = () => {
@@ -848,7 +933,15 @@ export default function App() {
                                     <p className="text-gray-400 text-sm mb-1">{isGeneral ? 'サークル残高' : '残高'}</p>
                                     <div className={`text-4xl font-bold mb-2 ${stats.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{stats.balance >= 0 ? '+' : ''} ¥{stats.balance.toLocaleString()}</div>
                                     <div className="flex justify-center gap-4 text-xs text-gray-400 mb-4"><span>収入: ¥{stats.income.toLocaleString()}</span><span>支出: ¥{stats.expense.toLocaleString()}</span></div>
-                                    {isAdmin && !isGeneral && !isClosed && <button onClick={() => promptSettleEvent(event, stats.balance)} className="w-full bg-white/10 hover:bg-white/20 text-white py-3 rounded-lg font-bold text-sm border border-white/20">サークル費へ反映して終了</button>}
+                                    {/* ★修正: 「会計を終了」ボタン */}
+                                    {isAdmin && !isGeneral && !isClosed && (
+                                        <button 
+                                            onClick={() => handleSettleEvent(event, stats.balance)} 
+                                            className="w-full bg-white/10 hover:bg-white/20 text-white py-3 rounded-lg font-bold text-sm border border-white/20 flex items-center justify-center gap-2"
+                                        >
+                                            <Calculator size={16}/> 会計を終了 (精算)
+                                        </button>
+                                    )}
                                 </div>
                              </section>
 
@@ -885,13 +978,6 @@ export default function App() {
                                                         </div>
                                                         <div className="flex items-center gap-3">
                                                             <span className="font-bold text-gray-800">¥{t.summary.totalAmount.toLocaleString()}</span>
-                                                            {isAdmin && !isClosed && <button onClick={() => {
-                                                                setConfirmModal({
-                                                                    isOpen: true, title: "返金の完了確認",
-                                                                    message: `${t.userName}さんへの ¥${t.summary.totalAmount.toLocaleString()} の返金を完了しますか？`,
-                                                                    action: async () => { const ref = getDocRef(PATHS.transaction(circleId!, currentEventId, t.id)); await updateDoc(ref, { "summary.isReimbursed": true }); }
-                                                                });
-                                                            }} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold">精算</button>}
                                                         </div>
                                                     </div>
                                                 ))}
@@ -919,7 +1005,6 @@ export default function App() {
                                 <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-sm p-6">
                                     <h2 className="text-lg font-bold mb-4">{transactionModalMode === 'admin_direct' ? '管理者の支出' : '記録を追加'}</h2>
                                     <form onSubmit={addTransaction} className="space-y-4">
-                                        {/* フォーム内容は省略せず実装 */}
                                         {transactionModalMode === 'regular' && (
                                              <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
                                                  <label className="flex-1 cursor-pointer"><input type="radio" name="type" value="expense" defaultChecked className="peer sr-only"/><div className="text-center py-2 text-sm font-bold text-gray-500 peer-checked:bg-white peer-checked:text-red-600 peer-checked:shadow-sm rounded">立替払い</div></label>
@@ -936,6 +1021,16 @@ export default function App() {
                              </div>
                         )}
                         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                        
+                        {/* ★追加: 精算モーダル */}
+                        <SettlementModal 
+                            isOpen={showSettlementModal}
+                            event={event}
+                            settlementData={settlementData}
+                            onConfirm={confirmSettlement}
+                            onCancel={() => setShowSettlementModal(false)}
+                            isProcessing={isProcessingAction}
+                        />
                         <ConfirmModal isOpen={confirmModal.isOpen} title={confirmModal.title} message={confirmModal.message} onConfirm={executeConfirmAction} onCancel={() => setConfirmModal({...confirmModal, isOpen: false})} isProcessing={isProcessingAction} />
                     </div>
                 );
@@ -965,13 +1060,12 @@ export default function App() {
                             <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className={`text-[10px] px-2 py-1 rounded font-bold ${myRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>{myRole === 'admin' ? '管理者' : 'メンバー'}</span>
                                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?circle=${circleId}`); showToast("サークルURLをコピーしました", 'success'); }} className="bg-gray-100 p-2 rounded-full"><Share2 size={16}/></button>
-                                {/* Removed pushState call */}
-                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
+                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); window.history.pushState({}, '', window.location.pathname); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
                             </div>
                         </div>
                     </header>
 
-                    {/* ★Viewの切り替え */}
+                    {/* Viewの切り替え */}
                     {viewMode === 'accounting' ? (
                         // 会計タスク確認画面
                         <div className="p-6">
@@ -994,14 +1088,13 @@ export default function App() {
                                                             <span className="font-bold text-red-500">¥{item.event.feePerPerson.toLocaleString()}</span
 >                                                            {myRole === 'admin' && (
                                                                 <button onClick={() => {
-                                                                    // 簡易的にFirestoreを更新
                                                                     const transRef = getCol(PATHS.transactions(circleId, item.event.id));
                                                                     addDoc(transRef, {
                                                                         userId: item.uid, userName: item.name, type: 'collection', description: '会費', timestamp: serverTimestamp(),
                                                                         summary: { totalAmount: item.event.feePerPerson, primaryCategory: 'other', hasReceipt: false, isReimbursed: false }
                                                                     }).then(() => {
                                                                         showToast("受領済みにしました", 'success');
-                                                                        fetchAccountingData(); // 再取得
+                                                                        fetchAccountingData(); 
                                                                     });
                                                                 }} className="text-[10px] bg-green-100 text-green-600 px-2 py-1 rounded font-bold">受領する</button>
                                                             )}
@@ -1026,7 +1119,6 @@ export default function App() {
                                                             <span className="font-bold text-indigo-600">¥{item.total.toLocaleString()}</span>
                                                             {myRole === 'admin' && (
                                                                 <button onClick={() => {
-                                                                    // 一括精算
                                                                     const batch = writeBatch(db);
                                                                     item.items.forEach((t: any) => {
                                                                         const ref = getDocRef(PATHS.transaction(circleId, item.event.id, t.id));
@@ -1050,7 +1142,7 @@ export default function App() {
                     ) : (
                         // 通常ダッシュボード
                         <div className="p-6">
-                            {/* 1. Circle Funds (General Accounting) - Moved to top */}
+                            {/* 1. Circle Funds (General Accounting) */}
                             <div onClick={() => setCurrentEventId('general')} className="bg-gradient-to-r from-gray-800 to-gray-700 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-95 transition-transform mb-6">
                                 <div className="relative z-10 flex justify-between items-center">
                                     <div>
@@ -1061,7 +1153,7 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* 2. Accounting Tasks (Admin Only) - Moved below Circle Funds */}
+                            {/* 2. Accounting Tasks (Admin Only) */}
                             {myRole === 'admin' && (
                                 <button onClick={() => setViewMode('accounting')} className="w-full mb-6 bg-orange-50 p-4 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm active:scale-95 transition-transform">
                                     <div className="flex items-center gap-3">
