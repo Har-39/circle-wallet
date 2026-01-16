@@ -411,7 +411,7 @@ const OnboardingScreen = ({ onCreate, onJoin, isProcessing, onGoogleLogin, user 
                     <p className="text-xs font-bold text-indigo-500 tracking-wider mt-1 uppercase">Circle Wallet</p>
                 </div>
                 <div className="space-y-3">
-                    <button onClick={onCreate} disabled={isProcessing} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-70 group">{isProcessing ? <Loader2 className="animate-spin h-5 w-5"/> : <PlusCircle size={20} className="group-hover:scale-110 transition-transform"/>} 新しいサークルを作る</button>
+                    <button onClick={onCreate} disabled={isProcessing} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-70 group">{isProcessing ? <Loader2 className="animate-spin h-5 w-5"/> : <PlusCircle size={20} className="group-hover:scale-110 transition-transform"/>} ホリエモン</button>
                     <button onClick={() => setMode('join')} disabled={isProcessing} className="w-full py-4 bg-white hover:bg-gray-50 text-gray-700 border-2 border-gray-100 rounded-xl font-bold transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-70"><LogIn size={20} className="text-gray-400"/> 既存サークルに参加</button>
                 </div>
                 
