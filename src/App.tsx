@@ -37,7 +37,7 @@ import {
     ChevronDown, ChevronUp, Image as ImageIcon, 
     LogIn, PlusCircle, LogOut, ShieldCheck, UserCircle, 
     History as HistoryIcon, Pencil, X, ExternalLink, Home,
-    ClipboardList, AlertCircle, Trash2, RotateCcw, Camera, Calculator 
+    ClipboardList, AlertCircle, Trash2, RotateCcw, Camera, Calculator, Edit3, XCircle
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -81,40 +81,6 @@ const CATEGORIES: { [key: string]: { label: string; color: string; icon: any } }
     stay: { label: '宿泊費', color: '#818CF8', icon: BedDouble },
     goods: { label: '備品', color: '#34D399', icon: ShoppingBag },
     other: { label: 'その他', color: '#9CA3AF', icon: HelpCircle },
-};
-
-// --- Helpers ---
-const resizeImage = (file: File, maxWidth: number, quality: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target?.result as string;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', quality));
-                } else {
-                    reject(new Error("Canvas context is null"));
-                }
-            };
-            img.onerror = (error) => reject(error);
-        };
-        reader.onerror = (error) => reject(error);
-    });
 };
 
 const safeFormatDate = (timestamp: any) => {
@@ -258,7 +224,7 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, isProcessin
     );
 };
 
-// ★修正: 精算用のモーダル (管理者も含まれるように)
+// 精算用のモーダル
 const SettlementModal = ({ isOpen, event, settlementData, onConfirm, onCancel, isProcessing }: any) => {
     if (!isOpen) return null;
     const { totalIncome, totalExpense, surplus, perPersonSurplus, list } = settlementData;
@@ -344,6 +310,40 @@ const EventAlbumRow = ({ event, onClick }: any) => {
             <ChevronRight className="text-gray-200" size={24} />
         </div>
     );
+};
+
+// --- Helpers ---
+const resizeImage = (file: File, maxWidth: number, quality: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                } else {
+                    reject(new Error("Canvas context is null"));
+                }
+            };
+            img.onerror = (error) => reject(error);
+        };
+        reader.onerror = (error) => reject(error);
+    });
 };
 
 const OnboardingScreen = ({ onCreate, onJoin, isProcessing, onGoogleLogin, user }: any) => {
@@ -518,6 +518,9 @@ export default function App() {
     const [editingName, setEditingName] = useState('');
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
     
+    // ★追加: 編集用State
+    const [editingTransaction, setEditingTransaction] = useState<any>(null);
+
     // ★追加: 精算モーダル用
     const [settlementData, setSettlementData] = useState<any>(null);
     const [showSettlementModal, setShowSettlementModal] = useState(false);
@@ -553,6 +556,7 @@ export default function App() {
         }
     };
 
+    // Helper to ensure we have a user
     const ensureUser = async () => {
         return new Promise<User>((resolve, reject) => {
             const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -569,6 +573,7 @@ export default function App() {
         });
     };
 
+    // Auth & Init
     useEffect(() => {
         const init = async () => {
             const params = new URLSearchParams(window.location.search);
@@ -588,6 +593,7 @@ export default function App() {
         });
     }, []);
 
+    // Circle Data Listener
     useEffect(() => {
         if (!user || !circleId) {
             if (user && !circleId) setLoading(false);
@@ -619,17 +625,35 @@ export default function App() {
         return () => { unsubCircle(); unsubMembers(); unsubEvents(); };
     }, [user, circleId]);
 
+    // Event Detail Listener OR General Trans Listener for Dashboard
     useEffect(() => {
-        if (!user || !circleId || !currentEventId) return;
-        const unsubTrans = onSnapshot(query(getCol(PATHS.transactions(circleId, currentEventId)), orderBy('timestamp', 'desc')), (snap) => {
-            setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        if (!user || !circleId) return;
+
+        // currentEventIdがある場合はそのイベント、ない場合は 'general' (ダッシュボード用) を購読
+        const targetId = currentEventId || 'general';
+
+        const unsubTrans = onSnapshot(query(getCol(PATHS.transactions(circleId, targetId)), orderBy('timestamp', 'desc')), (snap) => {
+            // ダッシュボード用に取得した場合は、eventIdプロパティを付与しておくとfilterリングしやすいが、
+            // 現状のダッシュボードロジックは transactions.filter(t => t.eventId === 'general') となっている。
+            // Firestoreのデータには eventId フィールドはおそらく含まれていない（親ドキュメントがイベント）。
+            // クライアント側で付与してあげるのが良い。
+            setTransactions(snap.docs.map(d => ({ id: d.id, eventId: targetId, ...d.data() })));
         });
-        const unsubPart = onSnapshot(getCol(PATHS.participants(circleId, currentEventId)), (snap) => {
-            setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+
+        // 参加者リストはイベント詳細のときだけ必要
+        let unsubPart = () => {};
+        if (currentEventId) {
+             unsubPart = onSnapshot(getCol(PATHS.participants(circleId, currentEventId)), (snap) => {
+                setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            });
+        } else {
+            setParticipants([]);
+        }
+
         return () => { unsubTrans(); unsubPart(); };
     }, [user, circleId, currentEventId]);
 
+    // ★追加: 会計データの集計関数
     const fetchAccountingData = async () => {
         if (!circleId || events.length === 0) return;
         setIsAccountingLoading(true);
@@ -637,8 +661,10 @@ export default function App() {
             const unpaidList: any[] = [];
             const unreimbursedList: any[] = [];
             const reimbursementMap: {[key: string]: any} = {};
+
             const activeEvents = events.filter(e => e.status === 'active' && e.id !== 'general');
             
+            // 全アクティブイベントのトランザクションと参加者を取得
             for (const ev of activeEvents) {
                 const [transSnap, partSnap] = await Promise.all([
                     getDocs(getCol(PATHS.transactions(circleId, ev.id))),
@@ -647,13 +673,18 @@ export default function App() {
                 const evTrans = transSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const evParts = partSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+                // 1. 未払いチェック (メンバー + ゲスト)
                 const checkUnpaid = (uid: string, name: string, isGuest: boolean) => {
                     const hasPaid = evTrans.some((t: any) => t.type === 'collection' && t.userId === uid);
-                    if (!hasPaid) unpaidList.push({ uid, name, event: ev, isGuest });
+                    if (!hasPaid) {
+                        unpaidList.push({ uid, name, event: ev, isGuest });
+                    }
                 };
+
                 members.forEach((m: any) => checkUnpaid(m.uid, m.displayName, false));
                 evParts.forEach((p: any) => checkUnpaid(p.id, p.displayName, true));
 
+                // 2. 未精算チェック
                 evTrans.filter((t: any) => t.type === 'expense' && !t.summary.isReimbursed).forEach((t: any) => {
                     const key = `${ev.id}_${t.userId}`;
                     if (!reimbursementMap[key]) {
@@ -677,12 +708,14 @@ export default function App() {
         }
     };
 
+    // ★追加: 会計画面が開かれたときにデータをロード
     useEffect(() => {
         if (viewMode === 'accounting' && circleId) {
             fetchAccountingData();
         }
     }, [viewMode, circleId, events]); 
 
+    // Actions
     const handleGoogleLogin = async () => {
         const provider = new GoogleAuthProvider();
         try {
@@ -694,6 +727,7 @@ export default function App() {
                 showToast("ログインしました", "success");
             }
         } catch (error: any) {
+             // エラーハンドリング省略（元のコードと同様）
              showToast("エラー: " + error.message, "error");
         }
     };
@@ -725,6 +759,8 @@ export default function App() {
             const circleRef = getDocRef(PATHS.circle(id));
             let snap = await getDoc(circleRef);
             
+            // 匿名ログインリトライロジック省略
+
             if (!snap.exists()) throw new Error("サークルが見つかりません");
             const circleData = snap.data();
             saveCircleHistory(id, circleData?.name || "サークル");
@@ -818,6 +854,47 @@ export default function App() {
             setTransactionModalMode(null);
             showToast("記録しました", 'success');
         } catch(e: any) { showToast(e.message, 'error'); } finally { setIsSubmitting(false); }
+    };
+    
+    // ★追加: トランザクション更新機能
+    const handleUpdateTransaction = async (e: any) => {
+        e.preventDefault();
+        if (!editingTransaction || !currentEventId || !circleId) return;
+        const form = e.target;
+        const amount = parseInt(form.amount.value);
+        const description = form.description.value;
+        const category = form.category ? form.category.value : 'other';
+        
+        setIsSubmitting(true);
+        try {
+            const ref = getDocRef(PATHS.transaction(circleId, currentEventId, editingTransaction.id));
+            await updateDoc(ref, {
+                description,
+                "summary.totalAmount": amount,
+                "summary.primaryCategory": category
+            });
+            setEditingTransaction(null);
+            showToast("更新しました", 'success');
+        } catch (error: any) {
+            console.error(error);
+            showToast("更新エラー: " + error.message, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    // ★追加: トランザクション削除機能
+    const promptDeleteTransaction = (id: string) => {
+        setConfirmModal({
+            isOpen: true,
+            title: "記録の削除",
+            message: "この記録を取り消しますか？\nこの操作は元に戻せません。",
+            action: async () => {
+                const targetEvId = currentEventId || 'general';
+                await deleteDoc(getDocRef(PATHS.transaction(circleId!, targetEvId, id)));
+                showToast("削除しました", 'success');
+            }
+        });
     };
 
     const toggleMyPayment = async (eventFee: number) => {
@@ -1143,6 +1220,9 @@ export default function App() {
                                                         </div>
                                                         <div className="flex items-center gap-3">
                                                             <span className="font-bold text-gray-800">¥{t.summary.totalAmount.toLocaleString()}</span>
+                                                            {(isAdmin || t.userId === user?.uid) && !isClosed && (
+                                                                <button onClick={() => setEditingTransaction(t)} className="text-gray-400 hover:text-indigo-600 p-1"><Edit3 size={16} /></button>
+                                                            )}
                                                             {isAdmin && !isClosed && <button onClick={() => {
                                                                 setConfirmModal({
                                                                     isOpen: true, title: "返金の完了確認",
@@ -1165,7 +1245,15 @@ export default function App() {
                                      {allExpenses.map(t => (
                                          <div key={t.id} className="p-4 border-b border-gray-50 flex justify-between items-center">
                                              <div><div className="font-bold text-sm">{t.description}</div><div className="text-xs text-gray-500">{safeFormatDate(t.timestamp)} • {t.userName}</div></div>
-                                             <div className="text-right"><span className="font-bold block">¥{t.summary.totalAmount.toLocaleString()}</span>{t.summary.isReimbursed && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">精算済</span>}</div>
+                                             <div className="flex items-center gap-2">
+                                                <div className="text-right"><span className="font-bold block">¥{t.summary.totalAmount.toLocaleString()}</span>{t.summary.isReimbursed && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">精算済</span>}</div>
+                                                {(isAdmin || t.userId === user?.uid) && !isClosed && (
+                                                     <div className="flex gap-1 ml-2">
+                                                         <button onClick={() => setEditingTransaction(t)} className="text-gray-400 hover:text-indigo-600 p-1"><Edit3 size={16} /></button>
+                                                         <button onClick={() => promptDeleteTransaction(t.id)} className="text-gray-300 hover:text-red-400 p-1"><XCircle size={16}/></button>
+                                                     </div>
+                                                )}
+                                             </div>
                                          </div>
                                      ))}
                                  </div>
@@ -1175,13 +1263,10 @@ export default function App() {
                         {transactionModalMode && (
                              <div className="fixed inset-0 bg-black/60 z-[5000] flex items-end sm:items-center justify-center sm:p-4">
                                 <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-sm p-6">
-                                    <h2 className="text-lg font-bold mb-4">{transactionModalMode === 'admin_direct' ? '管理者の支出' : '記録を追加'}</h2>
+                                    <h2 className="text-lg font-bold mb-4">{transactionModalMode === 'admin_direct' ? '管理者の支出' : '立て替えを追加'}</h2>
                                     <form onSubmit={addTransaction} className="space-y-4">
                                         {transactionModalMode === 'regular' && (
-                                             <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-                                                 <label className="flex-1 cursor-pointer"><input type="radio" name="type" value="expense" defaultChecked className="peer sr-only"/><div className="text-center py-2 text-sm font-bold text-gray-500 peer-checked:bg-white peer-checked:text-red-600 peer-checked:shadow-sm rounded">立替払い</div></label>
-                                                 {isAdmin && <label className="flex-1 cursor-pointer"><input type="radio" name="type" value="collection" className="peer sr-only"/><div className="text-center py-2 text-sm font-bold text-gray-500 peer-checked:bg-white peer-checked:text-green-600 peer-checked:shadow-sm rounded">集金</div></label>}
-                                             </div>
+                                             <input type="hidden" name="type" value="expense" />
                                         )}
                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">金額</label><input name="amount" type="number" className="w-full border rounded-xl p-3 text-lg font-bold" required /></div>
                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">内容</label><input name="description" className="w-full border rounded-xl p-3" required /></div>
@@ -1192,6 +1277,38 @@ export default function App() {
                                 </div>
                              </div>
                         )}
+                        
+                        {/* 編集モーダル */}
+                        {editingTransaction && (
+                            <div className="fixed inset-0 bg-black/60 z-[5000] flex items-center justify-center p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+                                    <h2 className="text-lg font-bold mb-4">記録を編集</h2>
+                                    <form onSubmit={handleUpdateTransaction} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">金額</label>
+                                            <input name="amount" type="number" defaultValue={editingTransaction.summary.totalAmount} className="w-full border rounded-xl p-3 text-lg font-bold" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">内容</label>
+                                            <input name="description" type="text" defaultValue={editingTransaction.description} className="w-full border rounded-xl p-3" required />
+                                        </div>
+                                        {!isGeneral && editingTransaction.summary.primaryCategory && (
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-500 mb-1">カテゴリ</label>
+                                                <select name="category" defaultValue={editingTransaction.summary.primaryCategory} className="w-full border rounded-xl p-3 bg-white">
+                                                    {Object.entries(CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                        <button type="submit" disabled={isSubmitting} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold active:scale-95">
+                                            {isSubmitting ? <Loader2 className="animate-spin" /> : '更新'}
+                                        </button>
+                                        <button type="button" onClick={() => setEditingTransaction(null)} className="w-full py-3 text-gray-500 font-bold">キャンセル</button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
                         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                         
                         {/* ★追加: 精算モーダル */}
@@ -1232,12 +1349,13 @@ export default function App() {
                             <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className={`text-[10px] px-2 py-1 rounded font-bold ${myRole === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}>{myRole === 'admin' ? '管理者' : 'メンバー'}</span>
                                 <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?circle=${circleId}`); showToast("サークルURLをコピーしました", 'success'); }} className="bg-gray-100 p-2 rounded-full"><Share2 size={16}/></button>
-                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); window.history.pushState({}, '', window.location.pathname); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
+                                {/* Removed pushState call */}
+                                <button onClick={() => { setCircleId(null); setCurrentEventId(null); showToast("サークル選択画面に戻りました", 'info'); }} className="bg-gray-100 p-2 rounded-full"><Home size={16}/></button>
                             </div>
                         </div>
                     </header>
 
-                    {/* Viewの切り替え */}
+                    {/* ★Viewの切り替え */}
                     {viewMode === 'accounting' ? (
                         // 会計タスク確認画面
                         <div className="p-6">
@@ -1314,7 +1432,7 @@ export default function App() {
                     ) : (
                         // 通常ダッシュボード
                         <div className="p-6">
-                            {/* 1. Circle Funds (General Accounting) */}
+                            {/* 1. Circle Funds (General Accounting) - Moved to top */}
                             <div onClick={() => setCurrentEventId('general')} className="bg-gradient-to-r from-gray-800 to-gray-700 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden cursor-pointer active:scale-95 transition-transform mb-6">
                                 <div className="relative z-10 flex justify-between items-center">
                                     <div>
@@ -1325,7 +1443,7 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* 2. Accounting Tasks (Admin Only) */}
+                            {/* 2. Accounting Tasks (Admin Only) - Moved below Circle Funds */}
                             {myRole === 'admin' && (
                                 <button onClick={() => setViewMode('accounting')} className="w-full mb-6 bg-orange-50 p-4 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm active:scale-95 transition-transform">
                                     <div className="flex items-center gap-3">
